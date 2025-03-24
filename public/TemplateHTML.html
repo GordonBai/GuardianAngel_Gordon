@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最新视频和标签显示</title>
+    <style>
+        .video-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .label-container {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+        .error-message {
+            color: red;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #ffebee;
+            border: 1px solid #ffcdd2;
+            border-radius: 4px;
+        }
+        .no-file {
+            color: #666;
+            font-style: italic;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>最新视频和标签显示</h1>
+    <div id="localFilesDisplay"></div>
+
+    <script>
+        let ws = null;
+
+        function connectWebSocket() {
+            console.log('Connecting to WebSocket...');
+            ws = new WebSocket('ws://localhost:8080');
+
+            ws.onopen = () => {
+                console.log('WebSocket connection established');
+            };
+
+            ws.onmessage = (event) => {
+                console.log('WebSocket message received:', event.data);
+                if (event.data === 'New video added' || event.data === 'New label added') {
+                    loadLatestFiles(); // 自动更新显示
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket connection closed');
+                // 尝试重新连接
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function showError(message) {
+            const displayDiv = document.getElementById('localFilesDisplay');
+            displayDiv.innerHTML = `<div class="error-message">${message}</div>`;
+        }
+
+        async function loadLatestFiles() {
+            console.log('Loading latest files...');
+            const displayDiv = document.getElementById('localFilesDisplay');
+            displayDiv.innerHTML = ''; // 清空之前的内容
+
+            try {
+                // 获取最新视频
+                console.log('Fetching latest video...');
+                const videoResponse = await fetch('http://localhost:3000/get_latest_video');
+                if (!videoResponse.ok) {
+                    throw new Error(`Failed to fetch latest video: ${videoResponse.status} ${videoResponse.statusText}`);
+                }
+                const { filename: videoFile } = await videoResponse.json();
+                console.log('Latest video:', videoFile);
+
+                if (videoFile) {
+                    const videoContainer = document.createElement('div');
+                    videoContainer.className = 'video-container';
+                    
+                    const videoElement = document.createElement('video');
+                    videoElement.controls = true;
+                    videoElement.width = 500;
+                    videoElement.src = `http://localhost:3000/video_data/${encodeURIComponent(videoFile)}`;
+                    
+                    videoContainer.appendChild(videoElement);
+                    displayDiv.appendChild(videoContainer);
+                } else {
+                    displayDiv.innerHTML += '<div class="no-file">暂无视频文件</div>';
+                }
+
+                // 获取最新标签
+                console.log('Fetching latest label...');
+                const labelResponse = await fetch('http://localhost:3000/get_latest_label');
+                if (!labelResponse.ok) {
+                    throw new Error(`Failed to fetch latest label: ${labelResponse.status} ${labelResponse.statusText}`);
+                }
+                const { filename: labelFile } = await labelResponse.json();
+                console.log('Latest label:', labelFile);
+
+                if (labelFile) {
+                    try {
+                        console.log(`Fetching label content for ${labelFile}...`);
+                        const response = await fetch(`http://localhost:3000/label_data/${encodeURIComponent(labelFile)}`);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch label content: ${response.status} ${response.statusText}`);
+                        }
+                        const text = await response.text();
+                        
+                        const labelContainer = document.createElement('div');
+                        labelContainer.className = 'label-container';
+                        labelContainer.innerText = `最新标签 (${labelFile}): ${text}`;
+                        displayDiv.appendChild(labelContainer);
+                    } catch (error) {
+                        console.error(`Error loading label file ${labelFile}:`, error);
+                        showError(`Error loading label file ${labelFile}: ${error.message}`);
+                    }
+                } else {
+                    displayDiv.innerHTML += '<div class="no-file">暂无标签文件</div>';
+                }
+            } catch (error) {
+                console.error('Error loading latest files:', error);
+                showError(`Error loading files: ${error.message}`);
+            }
+        }
+
+        // 页面加载时自动加载文件
+        window.onload = () => {
+            loadLatestFiles();
+            connectWebSocket();
+        };
+    </script>
+</body>
+</html>
